@@ -128,4 +128,36 @@ func (a *Aggregator) PrintSummary() {
 			fmt.Printf("%s\n", bitlink)
 		}
 	}
+
+	// Print final summary - only mapped long URLs (shortlinks without mapping are excluded)
+	fmt.Printf("\nNote: Shortlinks without mapping are excluded from the final summary.\n")
+	fmt.Printf("\nFinal Summary:\n")
+	fmt.Printf("[")
+	first := true
+	for url, clicks := range a.results.ClicksByURL {
+		// Only include actual long URLs - exclude unmapped bitlinks
+		// Unmapped bitlinks will still have the bitlink format (bit.ly, es.pn, amzn.to, etc.)
+		if url != "" && !a.isShortlink(url) {
+			if !first {
+				fmt.Printf(", ")
+			}
+			if first {
+				first = false
+			}
+			fmt.Printf("{\"%s\": %d}", url, clicks)
+		}
+	}
+	fmt.Printf("]\n")
+}
+
+// isShortlink checks if a URL is a shortlink (not a mapped long URL)
+// It determines this by checking if the URL appears in our list of unknown bitlinks
+func (a *Aggregator) isShortlink(url string) bool {
+	// Check if this URL is in our list of unmapped bitlinks
+	for _, unmappedLink := range a.results.UnknownBitlinks {
+		if url == unmappedLink {
+			return true
+		}
+	}
+	return false
 }

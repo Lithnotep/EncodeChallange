@@ -254,3 +254,165 @@ func TestAggregator_YearFiltering(t *testing.T) {
 		t.Errorf("Expected 0 clicks for 2021 URL, got %d", results.ClicksByURL["https://example2021.com/"])
 	}
 }
+
+// Test the isShortlink method - now based on actual unmapped bitlinks
+func TestAggregator_IsShortlink(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/mapped": "https://mapped.com/",
+	}
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
+
+	// Process some records to populate the UnknownBitlinks list
+	records := []DecodeRecord{
+		// This will be mapped
+		{Bitlink: "http://bit.ly/mapped", UserAgent: "Chrome", Timestamp: "2020-01-01T00:00:00Z", Referrer: "direct", RemoteIP: "1.1.1.1"},
+		// These will be unmapped and added to UnknownBitlinks
+		{Bitlink: "http://bit.ly/unknown1", UserAgent: "Firefox", Timestamp: "2020-01-02T00:00:00Z", Referrer: "t.co", RemoteIP: "2.2.2.2"},
+		{Bitlink: "http://es.pn/unknown2", UserAgent: "Safari", Timestamp: "2020-01-03T00:00:00Z", Referrer: "direct", RemoteIP: "3.3.3.3"},
+		{Bitlink: "http://amzn.to/unknown3", UserAgent: "Edge", Timestamp: "2020-01-04T00:00:00Z", Referrer: "facebook.com", RemoteIP: "4.4.4.4"},
+	}
+
+	for _, record := range records {
+		err := aggregator.ProcessRecord(record)
+		if err != nil {
+			t.Fatalf("ProcessRecord failed: %v", err)
+		}
+	}
+
+	// Test that unmapped bitlinks are identified as shortlinks
+	if !aggregator.isShortlink("http://bit.ly/unknown1") {
+		t.Error("Expected unknown1 to be identified as shortlink")
+	}
+
+	if !aggregator.isShortlink("http://es.pn/unknown2") {
+		t.Error("Expected unknown2 to be identified as shortlink")
+	}
+
+	if !aggregator.isShortlink("http://amzn.to/unknown3") {
+		t.Error("Expected unknown3 to be identified as shortlink")
+	}
+
+	// Test that mapped long URLs are NOT identified as shortlinks
+	if aggregator.isShortlink("https://mapped.com/") {
+		t.Error("Expected mapped.com to NOT be identified as shortlink")
+	}
+
+	// Test that URLs not in our data are NOT identified as shortlinks
+	if aggregator.isShortlink("http://bit.ly/notprocessed") {
+		t.Error("Expected unprocessed bitlink to NOT be identified as shortlink")
+	}
+
+	if aggregator.isShortlink("https://google.com/") {
+		t.Error("Expected google.com to NOT be identified as shortlink")
+	}
+
+	// Test edge cases
+	if aggregator.isShortlink("") {
+		t.Error("Expected empty string to NOT be identified as shortlink")
+	}
+}
+
+// Test that the final summary only includes mapped long URLs
+func TestAggregator_FinalSummaryFiltering(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/google": "https://google.com/",
+		"http://bit.ly/github": "https://github.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
+
+	records := []DecodeRecord{
+		// Mapped bitlinks (should appear in final summary)
+		{Bitlink: "http://bit.ly/google", UserAgent: "Chrome", Timestamp: "2020-01-01T00:00:00Z", Referrer: "direct", RemoteIP: "1.1.1.1"},
+		{Bitlink: "http://bit.ly/github", UserAgent: "Firefox", Timestamp: "2020-01-02T00:00:00Z", Referrer: "t.co", RemoteIP: "2.2.2.2"},
+		{Bitlink: "http://bit.ly/google", UserAgent: "Safari", Timestamp: "2020-01-03T00:00:00Z", Referrer: "direct", RemoteIP: "3.3.3.3"},
+
+		// Unmapped bitlinks (should NOT appear in final summary)
+		{Bitlink: "http://bit.ly/unknown", UserAgent: "Edge", Timestamp: "2020-01-04T00:00:00Z", Referrer: "direct", RemoteIP: "4.4.4.4"},
+		{Bitlink: "http://es.pn/unknown", UserAgent: "Opera", Timestamp: "2020-01-05T00:00:00Z", Referrer: "facebook.com", RemoteIP: "5.5.5.5"},
+	}
+
+	for _, record := range records {
+		err := aggregator.ProcessRecord(record)
+		if err != nil {
+			t.Fatalf("ProcessRecord failed: %v", err)
+		}
+	}
+
+	results := aggregator.GetResults()
+
+	// Verify total counts include all records
+	if results.TotalClicks != 5 {
+		t.Errorf("Expected 5 total clicks, got %d", results.TotalClicks)
+	}
+
+	// Verify that mapped URLs have correct counts
+	if results.ClicksByURL["https://google.com/"] != 2 {
+		t.Errorf("Expected 2 clicks for google.com, got %d", results.ClicksByURL["https://google.com/"])
+	}
+
+	if results.ClicksByURL["https://github.com/"] != 1 {
+		t.Errorf("Expected 1 click for github.com, got %d", results.ClicksByURL["https://github.com/"])
+	}
+
+	// Verify that unmapped URLs are also tracked (as fallback)
+	if results.ClicksByURL["http://bit.ly/unknown"] != 1 {
+		t.Errorf("Expected 1 click for unknown bitlink, got %d", results.ClicksByURL["http://bit.ly/unknown"])
+	}
+
+	if results.ClicksByURL["http://es.pn/unknown"] != 1 {
+		t.Errorf("Expected 1 click for es.pn unknown, got %d", results.ClicksByURL["http://es.pn/unknown"])
+	}
+
+	// Test that isShortlink correctly identifies the URLs
+	if !aggregator.isShortlink("http://bit.ly/unknown") {
+		t.Error("Expected bit.ly URL to be identified as shortlink")
+	}
+
+	if !aggregator.isShortlink("http://es.pn/unknown") {
+		t.Error("Expected es.pn URL to be identified as shortlink")
+	}
+
+	if aggregator.isShortlink("https://google.com/") {
+		t.Error("Expected google.com to NOT be identified as shortlink")
+	}
+
+	if aggregator.isShortlink("https://github.com/") {
+		t.Error("Expected github.com to NOT be identified as shortlink")
+	}
+}
+
+// Test that PrintSummary works without panicking (integration-style test)
+func TestAggregator_PrintSummary(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test": "https://example.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 2020}
+	aggregator := NewAggregator(mapping, config)
+
+	record := DecodeRecord{
+		Bitlink:   "http://bit.ly/test",
+		UserAgent: "Mozilla/5.0",
+		Timestamp: "2020-01-01T00:00:00Z",
+		Referrer:  "direct",
+		RemoteIP:  "1.1.1.1",
+	}
+
+	err := aggregator.ProcessRecord(record)
+	if err != nil {
+		t.Fatalf("ProcessRecord failed: %v", err)
+	}
+
+	// This test mainly ensures PrintSummary doesn't panic
+	// In a more sophisticated test setup, we could capture stdout to verify output
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("PrintSummary panicked: %v", r)
+		}
+	}()
+
+	aggregator.PrintSummary()
+}
