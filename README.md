@@ -68,7 +68,7 @@ The program analyzes URL shortener click data with flexible command-line options
 ### Basic Usage
 
 ```bash
-# Default: Filter for year 2021
+# Default: Filter for year 2021, sort descending
 go run main.go
 
 # Filter for specific year
@@ -77,6 +77,12 @@ go run main.go -year=2021
 
 # Process all data (no year filter)
 go run main.go -year=0
+
+# Sort results in ascending order (lowest to highest clicks)
+go run main.go -sort-desc=false
+
+# Combine options: 2020 data with ascending sort
+go run main.go -year=2020 -sort-desc=false
 
 # Show help and available options
 go run main.go -help
@@ -87,6 +93,7 @@ go run main.go -help
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-year` | 2021 | Filter clicks by year (0 = no filter) |
+| `-sort-desc` | true | Sort results in descending order (false = ascending) |
 | `-help` | false | Show usage information |
 
 ### Data Format
@@ -143,6 +150,7 @@ Records Filtered Out: 4918
 Total Records Processed: 10000
 Total Clicks: 5082
 Unknown Bitlinks: 2018
+Processing Time: 37ms
 
 --- Top URLs by Clicks ---
 https://youtube.com/: 557 clicks
@@ -155,9 +163,31 @@ facebook.com: 541 clicks
 ...
 
 --- Clicks by Date (first 10) ---
-2021-05-12: 13 clicks
-2021-12-21: 16 clicks
+2021-12-15: 25 clicks
+2021-01-02: 23 clicks
 ...
+
+Final Summary:
+[{"https://youtube.com/": 557}, {"https://twitter.com/": 512}, {"https://reddit.com/": 510}]
+```
+
+### Sorting Behavior
+
+The `-sort-desc` flag controls the sort order for **all summary sections**:
+
+- **`-sort-desc=true` (default)**: All results sorted by click count, highest to lowest
+- **`-sort-desc=false`**: All results sorted by click count, lowest to highest
+
+**Sections affected by sorting:**
+- Top URLs by Clicks
+- Top Referrers  
+- Clicks by Date
+- Final Summary (JSON output)
+
+**Example with ascending sort:**
+```bash
+go run main.go -sort-desc=false
+# Output shows lowest click counts first in all sections
 ```
 
 ## Architecture
