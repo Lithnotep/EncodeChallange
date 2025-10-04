@@ -9,7 +9,8 @@ func TestNewAggregator(t *testing.T) {
 		"http://bit.ly/test": "https://example.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	if aggregator == nil {
 		t.Fatal("NewAggregator returned nil")
@@ -30,7 +31,8 @@ func TestAggregator_ProcessRecord(t *testing.T) {
 		"http://bit.ly/2kJO0qS": "https://github.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	// Test record with known bitlink
 	record1 := DecodeRecord{
@@ -73,7 +75,8 @@ func TestAggregator_ProcessRecord_UnknownBitlink(t *testing.T) {
 		"http://bit.ly/known": "https://known.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	// Test record with unknown bitlink
 	record := DecodeRecord{
@@ -109,7 +112,8 @@ func TestAggregator_ProcessRecord_InvalidTimestamp(t *testing.T) {
 		"http://bit.ly/test": "https://test.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	// Test record with invalid timestamp
 	record := DecodeRecord{
@@ -132,7 +136,8 @@ func TestAggregator_MultipleRecords(t *testing.T) {
 		"http://bit.ly/github": "https://github.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	records := []DecodeRecord{
 		{Bitlink: "http://bit.ly/google", UserAgent: "Chrome", Timestamp: "2020-01-01T00:00:00Z", Referrer: "direct", RemoteIP: "1.1.1.1"},
@@ -178,7 +183,8 @@ func TestAggregator_GetResults(t *testing.T) {
 		"http://bit.ly/test": "https://test.com/",
 	}
 
-	aggregator := NewAggregator(mapping)
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
 
 	record := DecodeRecord{
 		Bitlink:   "http://bit.ly/test",
@@ -200,32 +206,51 @@ func TestAggregator_GetResults(t *testing.T) {
 	}
 }
 
-func TestExtractDate(t *testing.T) {
-	testCases := []struct {
-		timestamp string
-		expected  string
-		shouldErr bool
-	}{
-		{"2020-02-15T00:00:00Z", "2020-02-15", false},
-		{"2021-12-31T23:59:59Z", "2021-12-31", false},
-		{"invalid-timestamp", "", true},
-		{"2020-02-15", "", true}, // Missing time part
+// Test year filtering functionality
+func TestAggregator_YearFiltering(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test2020": "https://example2020.com/",
+		"http://bit.ly/test2021": "https://example2021.com/",
 	}
 
-	for _, tc := range testCases {
-		result, err := extractDate(tc.timestamp)
+	// Test filtering for 2020 only
+	config := AggregationConfig{FilterYear: 2020}
+	aggregator := NewAggregator(mapping, config)
 
-		if tc.shouldErr {
-			if err == nil {
-				t.Errorf("Expected error for timestamp %s, got nil", tc.timestamp)
-			}
-		} else {
-			if err != nil {
-				t.Errorf("Unexpected error for timestamp %s: %v", tc.timestamp, err)
-			}
-			if result != tc.expected {
-				t.Errorf("Expected date %s for timestamp %s, got %s", tc.expected, tc.timestamp, result)
-			}
+	records := []DecodeRecord{
+		{Bitlink: "http://bit.ly/test2020", UserAgent: "Mozilla", Timestamp: "2020-05-01T00:00:00Z", Referrer: "direct", RemoteIP: "1.1.1.1"},
+		{Bitlink: "http://bit.ly/test2021", UserAgent: "Chrome", Timestamp: "2021-05-01T00:00:00Z", Referrer: "direct", RemoteIP: "2.2.2.2"},
+		{Bitlink: "http://bit.ly/test2020", UserAgent: "Safari", Timestamp: "2020-06-01T00:00:00Z", Referrer: "t.co", RemoteIP: "3.3.3.3"},
+	}
+
+	for _, record := range records {
+		err := aggregator.ProcessRecord(record)
+		if err != nil {
+			t.Fatalf("ProcessRecord failed: %v", err)
 		}
+	}
+
+	results := aggregator.GetResults()
+
+	// Should only count 2020 records (2 out of 3)
+	if results.TotalClicks != 2 {
+		t.Errorf("Expected 2 total clicks (2020 only), got %d", results.TotalClicks)
+	}
+
+	if results.FilteredOut != 1 {
+		t.Errorf("Expected 1 filtered out record, got %d", results.FilteredOut)
+	}
+
+	if results.ProcessedRecords != 3 {
+		t.Errorf("Expected 3 processed records, got %d", results.ProcessedRecords)
+	}
+
+	// Should only have clicks for 2020 URL
+	if results.ClicksByURL["https://example2020.com/"] != 2 {
+		t.Errorf("Expected 2 clicks for 2020 URL, got %d", results.ClicksByURL["https://example2020.com/"])
+	}
+
+	if results.ClicksByURL["https://example2021.com/"] != 0 {
+		t.Errorf("Expected 0 clicks for 2021 URL, got %d", results.ClicksByURL["https://example2021.com/"])
 	}
 }

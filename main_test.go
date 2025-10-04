@@ -57,7 +57,8 @@ https://github.com/,bit.ly,2kJO0qS`
 	}
 
 	// Step 2: Create aggregator
-	aggregator := pkg.NewAggregator(mapping)
+	config := pkg.AggregationConfig{FilterYear: 0} // No year filter for testing
+	aggregator := pkg.NewAggregator(mapping, config)
 	if aggregator == nil {
 		t.Fatal("NewAggregator returned nil")
 	}
@@ -165,7 +166,8 @@ https://google.com/,bit.ly,31Tt55y`
 		t.Fatalf("ReadEncodesMappings failed: %v", err)
 	}
 
-	aggregator := pkg.NewAggregator(mapping)
+	config := pkg.AggregationConfig{FilterYear: 0} // No year filter for testing
+	aggregator := pkg.NewAggregator(mapping, config)
 	err = pkg.StreamDecodes(jsonFile.Name(), aggregator.ProcessRecord)
 	if err != nil {
 		t.Fatalf("StreamDecodes failed: %v", err)

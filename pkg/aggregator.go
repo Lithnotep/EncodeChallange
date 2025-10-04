@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// AggregationConfig holds configuration options for aggregation
+type AggregationConfig struct {
+	FilterYear int // Year to filter by (0 means no filter)
+}
+
 // AggregationResults holds all the computed analytics
 type AggregationResults struct {
 	TotalClicks      int
@@ -13,23 +18,28 @@ type AggregationResults struct {
 	ClicksByDate     map[string]int // YYYY-MM-DD format
 	UnknownBitlinks  []string       // Bitlinks not found in encodes mapping
 	ProcessedRecords int
+	FilteredOut      int // Records filtered out by year
+	FilterYear       int // Year that was filtered for
 }
 
 // Aggregator handles the streaming aggregation of decode records
 type Aggregator struct {
 	mapping URLMapping
+	config  AggregationConfig
 	results AggregationResults
 }
 
-// NewAggregator creates a new aggregator with the URL mapping
-func NewAggregator(mapping URLMapping) *Aggregator {
+// NewAggregator creates a new aggregator with the URL mapping and configuration
+func NewAggregator(mapping URLMapping, config AggregationConfig) *Aggregator {
 	return &Aggregator{
 		mapping: mapping,
+		config:  config,
 		results: AggregationResults{
 			ClicksByURL:      make(map[string]int),
 			ClicksByReferrer: make(map[string]int),
 			ClicksByDate:     make(map[string]int),
 			UnknownBitlinks:  make([]string, 0),
+			FilterYear:       config.FilterYear,
 		},
 	}
 }
@@ -37,6 +47,19 @@ func NewAggregator(mapping URLMapping) *Aggregator {
 // ProcessRecord processes a single decode record and updates aggregations
 func (a *Aggregator) ProcessRecord(record DecodeRecord) error {
 	a.results.ProcessedRecords++
+
+	// Parse the timestamp to check the year
+	recordTime, err := time.Parse("2006-01-02T15:04:05Z", record.Timestamp)
+	if err != nil {
+		return fmt.Errorf("error parsing timestamp %s: %w", record.Timestamp, err)
+	}
+
+	// Filter by year if specified
+	if a.config.FilterYear > 0 && recordTime.Year() != a.config.FilterYear {
+		a.results.FilteredOut++
+		return nil // Skip this record
+	}
+
 	a.results.TotalClicks++
 
 	// Look up the original URL
@@ -54,10 +77,7 @@ func (a *Aggregator) ProcessRecord(record DecodeRecord) error {
 	a.results.ClicksByReferrer[record.Referrer]++
 
 	// Aggregate clicks by date
-	date, err := extractDate(record.Timestamp)
-	if err != nil {
-		return fmt.Errorf("error parsing timestamp %s: %w", record.Timestamp, err)
-	}
+	date := recordTime.Format("2006-01-02")
 	a.results.ClicksByDate[date]++
 
 	return nil
@@ -71,6 +91,10 @@ func (a *Aggregator) GetResults() AggregationResults {
 // PrintSummary prints a human-readable summary of the results
 func (a *Aggregator) PrintSummary() {
 	fmt.Printf("\n=== Aggregation Results ===\n")
+	if a.results.FilterYear > 0 {
+		fmt.Printf("Filter Year: %d\n", a.results.FilterYear)
+		fmt.Printf("Records Filtered Out: %d\n", a.results.FilteredOut)
+	}
 	fmt.Printf("Total Records Processed: %d\n", a.results.ProcessedRecords)
 	fmt.Printf("Total Clicks: %d\n", a.results.TotalClicks)
 	fmt.Printf("Unknown Bitlinks: %d\n", len(a.results.UnknownBitlinks))
@@ -104,13 +128,4 @@ func (a *Aggregator) PrintSummary() {
 			fmt.Printf("%s\n", bitlink)
 		}
 	}
-}
-
-// extractDate extracts date in YYYY-MM-DD format from ISO timestamp
-func extractDate(timestamp string) (string, error) {
-	t, err := time.Parse("2006-01-02T15:04:05Z", timestamp)
-	if err != nil {
-		return "", err
-	}
-	return t.Format("2006-01-02"), nil
 }
