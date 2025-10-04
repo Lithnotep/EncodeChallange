@@ -102,3 +102,65 @@ This document outlines how AI tools (GitHub Copilot and Claude) were used throug
 - **Optimization guidance**: Provides metrics for future improvements
 - **Production readiness**: Essential monitoring for large dataset processing
 
+### 8. Comprehensive Sorting Architecture & Code Consolidation
+**Tool Used:** Claude 4  
+**Objective:** Implement configurable sorting across all summary sections with architectural optimization
+
+**Initial Request:** *"The final output should be in descending order of clicks"*  
+**Follow-up Analysis:** *"Question, is this the best and most efficient place to sort? If there was a flag for ascending or descending sort should it be done in the aggregator?"*
+
+**Evolution of Implementation:**
+
+**Phase 1: Basic Final Output Sorting**
+- Added descending sort to final summary JSON output only
+- Sorting logic embedded directly in `PrintSummary()` method
+- **Issue:** Mixed presentation logic with data transformation
+
+**Phase 2: Architecture Analysis & Comprehensive Sorting**
+- **Problem Identified:** Multiple unsorted sections (Top URLs, Top Referrers, Clicks by Date)
+- **Request:** *"I also noticed Top Referrers, Clicks by Date, Top URLs by Clicks are not sorted either. Have them use the config new config as well. As efficiently as possible. If ascending then all lists are ascending is the idea."*
+
+**Implementation:**
+- Added `SortDesc` boolean to `AggregationConfig` (default: true)
+- Added `-sort-desc` CLI flag with clear documentation
+- Created separate sorting methods:
+  - `GetSortedURLs()` - with shortlink filtering capability
+  - `getSortedKeyValues()` - for generic key-value sorting
+- Applied consistent sorting to ALL summary sections
+
+**Phase 3: Code Consolidation Optimization**
+- **Key Insight:** *"Question. Couldn't getSortedKeyValues work for urls too? Since it's a key value string to int?"*
+- **Analysis:** Both methods performed identical operations (map[string]int → sorted slice)
+- **Refactoring:** Unified into single `getSortedKeyValues()` method with optional filter function
+
+**Final Architecture:**
+```go
+// One unified method handles all sorting with optional filtering
+getSortedKeyValues(data map[string]int, filter func(string) bool) []KeyValue
+
+// URL sorting uses same method with shortlink filtering
+GetSortedURLs(excludeShortlinks bool) []KeyValue
+```
+
+**CLI Usage:**
+```bash
+go run main.go                           # Default: 2021, descending
+go run main.go -sort-desc=false          # Ascending sort
+go run main.go -year=2020 -sort-desc=false # Year 2020, ascending
+```
+
+**Results Achieved:**
+- **Code Reduction:** Eliminated ~20 lines of duplicate sorting logic
+- **Consistency:** All sections use identical sorting behavior
+- **Maintainability:** Single point of change for sorting modifications
+- **Flexibility:** Filter function enables custom exclusion logic
+- **Testing:** Added comprehensive sorting tests (25 total tests passing)
+- **Performance:** No performance impact, sorting happens post-aggregation
+
+**Benefits:**
+- **DRY Principle:** No duplicate sorting code
+- **Separation of Concerns:** Data processing separated from presentation
+- **Configurability:** User controls sort direction across entire application
+- **Architectural Cleanliness:** Unified approach reduces cognitive complexity
+- **Future-Proof:** Easy to extend with additional sorting criteria
+

@@ -502,3 +502,110 @@ func TestAggregator_TimingMultipleCalls(t *testing.T) {
 		t.Errorf("Expected second timing to be > 0, got %v", secondTiming)
 	}
 }
+
+// Test GetSortedURLs with descending sort
+func TestAggregator_GetSortedURLs_Descending(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test1": "https://google.com/",
+		"http://bit.ly/test2": "https://github.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 0, SortDesc: true}
+	aggregator := NewAggregator(mapping, config)
+
+	// Add some test data with different click counts
+	aggregator.results.ClicksByURL["https://google.com/"] = 100
+	aggregator.results.ClicksByURL["https://github.com/"] = 200
+	aggregator.results.ClicksByURL["https://reddit.com/"] = 50
+
+	sortedURLs := aggregator.GetSortedURLs(false)
+
+	// Should be sorted in descending order: github (200), google (100), reddit (50)
+	expected := []KeyValue{
+		{"https://github.com/", 200},
+		{"https://google.com/", 100},
+		{"https://reddit.com/", 50},
+	}
+
+	if len(sortedURLs) != len(expected) {
+		t.Fatalf("Expected %d URLs, got %d", len(expected), len(sortedURLs))
+	}
+
+	for i, expected := range expected {
+		if sortedURLs[i].Key != expected.Key || sortedURLs[i].Value != expected.Value {
+			t.Errorf("At index %d: expected %+v, got %+v", i, expected, sortedURLs[i])
+		}
+	}
+}
+
+// Test GetSortedURLs with ascending sort
+func TestAggregator_GetSortedURLs_Ascending(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test1": "https://google.com/",
+		"http://bit.ly/test2": "https://github.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 0, SortDesc: false}
+	aggregator := NewAggregator(mapping, config)
+
+	// Add some test data with different click counts
+	aggregator.results.ClicksByURL["https://google.com/"] = 100
+	aggregator.results.ClicksByURL["https://github.com/"] = 200
+	aggregator.results.ClicksByURL["https://reddit.com/"] = 50
+
+	sortedURLs := aggregator.GetSortedURLs(false)
+
+	// Should be sorted in ascending order: reddit (50), google (100), github (200)
+	expected := []KeyValue{
+		{"https://reddit.com/", 50},
+		{"https://google.com/", 100},
+		{"https://github.com/", 200},
+	}
+
+	if len(sortedURLs) != len(expected) {
+		t.Fatalf("Expected %d URLs, got %d", len(expected), len(sortedURLs))
+	}
+
+	for i, expected := range expected {
+		if sortedURLs[i].Key != expected.Key || sortedURLs[i].Value != expected.Value {
+			t.Errorf("At index %d: expected %+v, got %+v", i, expected, sortedURLs[i])
+		}
+	}
+}
+
+// Test GetSortedURLs with shortlink exclusion
+func TestAggregator_GetSortedURLs_ExcludeShortlinks(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test1": "https://google.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 0, SortDesc: true}
+	aggregator := NewAggregator(mapping, config)
+
+	// Add a known shortlink to unknown bitlinks list
+	aggregator.results.UnknownBitlinks = append(aggregator.results.UnknownBitlinks, "http://bit.ly/unknown")
+
+	// Add test data including a shortlink
+	aggregator.results.ClicksByURL["https://google.com/"] = 100
+	aggregator.results.ClicksByURL["http://bit.ly/unknown"] = 200
+
+	// Test excluding shortlinks
+	sortedURLs := aggregator.GetSortedURLs(true)
+
+	// Should only include long URLs, not shortlinks
+	if len(sortedURLs) != 1 {
+		t.Fatalf("Expected 1 URL (shortlinks excluded), got %d", len(sortedURLs))
+	}
+
+	if sortedURLs[0].Key != "https://google.com/" || sortedURLs[0].Value != 100 {
+		t.Errorf("Expected google.com with 100 clicks, got %+v", sortedURLs[0])
+	}
+
+	// Test including shortlinks
+	sortedURLsAll := aggregator.GetSortedURLs(false)
+
+	// Should include both URLs
+	if len(sortedURLsAll) != 2 {
+		t.Fatalf("Expected 2 URLs (shortlinks included), got %d", len(sortedURLsAll))
+	}
+}

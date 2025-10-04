@@ -2,12 +2,14 @@ package pkg
 
 import (
 	"fmt"
+	"sort"
 	"time"
 )
 
 // AggregationConfig holds configuration options for aggregation
 type AggregationConfig struct {
-	FilterYear int // Year to filter by (0 means no filter)
+	FilterYear int  // Year to filter by (0 means no filter)
+	SortDesc   bool // true for descending sort, false for ascending
 }
 
 // AggregationResults holds all the computed analytics
@@ -102,6 +104,49 @@ func (a *Aggregator) GetResults() AggregationResults {
 	return a.results
 }
 
+// GetSortedURLs returns URLs sorted by click count according to config
+func (a *Aggregator) GetSortedURLs(excludeShortlinks bool) []KeyValue {
+	var filter func(string) bool
+	if excludeShortlinks {
+		filter = func(url string) bool {
+			return a.isShortlink(url) // Return true to EXCLUDE shortlinks
+		}
+	}
+
+	return a.getSortedKeyValues(a.results.ClicksByURL, filter)
+}
+
+// KeyValue represents a generic key-value pair for sorting
+type KeyValue struct {
+	Key   string
+	Value int
+}
+
+// getSortedKeyValues converts a map to sorted slice based on config
+// Optional filter function can be provided to exclude certain keys
+func (a *Aggregator) getSortedKeyValues(data map[string]int, filter func(string) bool) []KeyValue {
+	var items []KeyValue
+	for key, value := range data {
+		// Apply filter if provided (return true to EXCLUDE the item)
+		if filter != nil && filter(key) {
+			continue
+		}
+		if key != "" {
+			items = append(items, KeyValue{Key: key, Value: value})
+		}
+	}
+
+	// Sort based on configuration
+	sort.Slice(items, func(i, j int) bool {
+		if a.config.SortDesc {
+			return items[i].Value > items[j].Value // Descending
+		}
+		return items[i].Value < items[j].Value // Ascending
+	})
+
+	return items
+}
+
 // PrintSummary prints a human-readable summary of the results
 func (a *Aggregator) PrintSummary() {
 	fmt.Printf("\n=== Aggregation Results ===\n")
@@ -117,23 +162,24 @@ func (a *Aggregator) PrintSummary() {
 	}
 
 	fmt.Printf("\n--- Top URLs by Clicks ---\n")
-	for url, clicks := range a.results.ClicksByURL {
-		fmt.Printf("%s: %d clicks\n", url, clicks)
+	sortedURLs := a.GetSortedURLs(false) // Include all URLs
+	for _, urlClick := range sortedURLs {
+		fmt.Printf("%s: %d clicks\n", urlClick.Key, urlClick.Value)
 	}
 
 	fmt.Printf("\n--- Top Referrers ---\n")
-	for referrer, clicks := range a.results.ClicksByReferrer {
-		fmt.Printf("%s: %d clicks\n", referrer, clicks)
+	sortedReferrers := a.getSortedKeyValues(a.results.ClicksByReferrer, nil)
+	for _, referrer := range sortedReferrers {
+		fmt.Printf("%s: %d clicks\n", referrer.Key, referrer.Value)
 	}
 
 	fmt.Printf("\n--- Clicks by Date (first 10) ---\n")
-	count := 0
-	for date, clicks := range a.results.ClicksByDate {
-		if count >= 10 {
+	sortedDates := a.getSortedKeyValues(a.results.ClicksByDate, nil)
+	for i, date := range sortedDates {
+		if i >= 10 {
 			break
 		}
-		fmt.Printf("%s: %d clicks\n", date, clicks)
-		count++
+		fmt.Printf("%s: %d clicks\n", date.Key, date.Value)
 	}
 
 	if len(a.results.UnknownBitlinks) > 0 {
@@ -149,20 +195,17 @@ func (a *Aggregator) PrintSummary() {
 	// Print final summary - only mapped long URLs (shortlinks without mapping are excluded)
 	fmt.Printf("\nNote: Shortlinks without mapping are excluded from the final summary.\n")
 	fmt.Printf("\nFinal Summary:\n")
+
+	// Get sorted URLs excluding shortlinks
+	sortedFinalURLs := a.GetSortedURLs(true) // Exclude shortlinks
+
+	// Print sorted results
 	fmt.Printf("[")
-	first := true
-	for url, clicks := range a.results.ClicksByURL {
-		// Only include actual long URLs - exclude unmapped bitlinks
-		// Unmapped bitlinks will still have the bitlink format (bit.ly, es.pn, amzn.to, etc.)
-		if url != "" && !a.isShortlink(url) {
-			if !first {
-				fmt.Printf(", ")
-			}
-			if first {
-				first = false
-			}
-			fmt.Printf("{\"%s\": %d}", url, clicks)
+	for i, urlClick := range sortedFinalURLs {
+		if i > 0 {
+			fmt.Printf(", ")
 		}
+		fmt.Printf("{\"%s\": %d}", urlClick.Key, urlClick.Value)
 	}
 	fmt.Printf("]\n")
 }

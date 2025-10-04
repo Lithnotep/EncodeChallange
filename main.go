@@ -11,6 +11,7 @@ import (
 func main() {
 	// Parse command line flags
 	var year = flag.Int("year", 2021, "Filter clicks by year (default: 2021)")
+	var sortDesc = flag.Bool("sort-desc", true, "Sort results in descending order (default: true)")
 	var help = flag.Bool("help", false, "Show usage information")
 	flag.Parse()
 
@@ -21,9 +22,11 @@ func main() {
 		fmt.Println("\nFlags:")
 		flag.PrintDefaults()
 		fmt.Println("\nExamples:")
-		fmt.Println("  go run main.go              # Filter for year 2021 (default)")
-		fmt.Println("  go run main.go -year=2020    # Filter for year 2020")
-		fmt.Println("  go run main.go -year=0       # No year filter (all data)")
+		fmt.Println("  go run main.go                           # Filter for year 2021, sort descending (default)")
+		fmt.Println("  go run main.go -year=2020                # Filter for year 2020")
+		fmt.Println("  go run main.go -year=0                   # No year filter (all data)")
+		fmt.Println("  go run main.go -sort-desc=false          # Sort in ascending order")
+		fmt.Println("  go run main.go -year=2020 -sort-desc=false # Year 2020, ascending sort")
 		return
 	}
 
@@ -41,6 +44,7 @@ func main() {
 	// Step 2: Create aggregator with the mapping and configuration
 	config := pkg.AggregationConfig{
 		FilterYear: *year,
+		SortDesc:   *sortDesc,
 	}
 	aggregator := pkg.NewAggregator(mapping, config)
 
