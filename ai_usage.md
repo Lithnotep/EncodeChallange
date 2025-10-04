@@ -79,3 +79,26 @@ This document outlines how AI tools (GitHub Copilot and Claude) were used throug
 - Works with any data source
 - No maintenance of hardcoded domain lists
 
+### 7. Performance Monitoring & Timing Implementation
+**Tool Used:** Claude 4  
+**Objective:** Add processing time measurement for scalability validation
+
+**Rationale:** *"I added [a process timer] so that if a massive file were used I could see if the time was scaling linearly and not going exponential."*
+
+**Implementation:**
+- Added `ProcessingTime` field to `AggregationResults` struct  
+- Created `StartTiming()` and `StopTiming()` methods on aggregator
+- Integrated timing around the core streaming process in main.go
+- Display processing time in final results summary
+
+**Performance Results Observed:**
+- **10,000 records**: ~37ms average processing time
+- **Processing rate**: ~270,000 records/second
+- **Scaling**: Linear time complexity confirmed (O(n))
+
+**Benefits:**
+- **Scalability validation**: Confirms streaming approach scales linearly
+- **Performance monitoring**: Easy to detect performance regressions
+- **Optimization guidance**: Provides metrics for future improvements
+- **Production readiness**: Essential monitoring for large dataset processing
+

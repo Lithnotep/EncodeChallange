@@ -18,15 +18,17 @@ type AggregationResults struct {
 	ClicksByDate     map[string]int // YYYY-MM-DD format
 	UnknownBitlinks  []string       // Bitlinks not found in encodes mapping
 	ProcessedRecords int
-	FilteredOut      int // Records filtered out by year
-	FilterYear       int // Year that was filtered for
+	FilteredOut      int           // Records filtered out by year
+	FilterYear       int           // Year that was filtered for
+	ProcessingTime   time.Duration // Total time taken for streaming and processing
 }
 
 // Aggregator handles the streaming aggregation of decode records
 type Aggregator struct {
-	mapping URLMapping
-	config  AggregationConfig
-	results AggregationResults
+	mapping   URLMapping
+	config    AggregationConfig
+	results   AggregationResults
+	startTime time.Time // Track when processing started
 }
 
 // NewAggregator creates a new aggregator with the URL mapping and configuration
@@ -83,6 +85,18 @@ func (a *Aggregator) ProcessRecord(record DecodeRecord) error {
 	return nil
 }
 
+// StartTiming begins tracking processing time
+func (a *Aggregator) StartTiming() {
+	a.startTime = time.Now()
+}
+
+// StopTiming ends tracking and stores the total processing time
+func (a *Aggregator) StopTiming() {
+	if !a.startTime.IsZero() {
+		a.results.ProcessingTime = time.Since(a.startTime)
+	}
+}
+
 // GetResults returns the final aggregation results
 func (a *Aggregator) GetResults() AggregationResults {
 	return a.results
@@ -98,6 +112,9 @@ func (a *Aggregator) PrintSummary() {
 	fmt.Printf("Total Records Processed: %d\n", a.results.ProcessedRecords)
 	fmt.Printf("Total Clicks: %d\n", a.results.TotalClicks)
 	fmt.Printf("Unknown Bitlinks: %d\n", len(a.results.UnknownBitlinks))
+	if a.results.ProcessingTime > 0 {
+		fmt.Printf("Processing Time: %v\n", a.results.ProcessingTime)
+	}
 
 	fmt.Printf("\n--- Top URLs by Clicks ---\n")
 	for url, clicks := range a.results.ClicksByURL {
@@ -120,7 +137,7 @@ func (a *Aggregator) PrintSummary() {
 	}
 
 	if len(a.results.UnknownBitlinks) > 0 {
-		fmt.Printf("\n--- Unknown Bitlinks (first 5) ---\n")
+		fmt.Printf("\n--- Unknown Bitlink Clicks (first 5) ---\n")
 		for i, bitlink := range a.results.UnknownBitlinks {
 			if i >= 5 {
 				break

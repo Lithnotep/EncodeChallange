@@ -46,7 +46,9 @@ func main() {
 
 	// Step 3: Stream process decode records (single pass)
 	fmt.Println("Streaming decode records...")
+	aggregator.StartTiming()
 	err = pkg.StreamDecodes("data/decodes.json", aggregator.ProcessRecord)
+	aggregator.StopTiming()
 	if err != nil {
 		log.Printf("Error streaming decodes: %v", err)
 		return

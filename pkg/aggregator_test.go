@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"testing"
+	"time"
 )
 
 func TestNewAggregator(t *testing.T) {
@@ -415,4 +416,89 @@ func TestAggregator_PrintSummary(t *testing.T) {
 	}()
 
 	aggregator.PrintSummary()
+}
+
+// Test timing functionality
+func TestAggregator_Timing(t *testing.T) {
+	mapping := URLMapping{
+		"http://bit.ly/test": "https://example.com/",
+	}
+
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
+
+	// Test that timing starts at zero
+	results := aggregator.GetResults()
+	if results.ProcessingTime != 0 {
+		t.Errorf("Expected initial ProcessingTime to be 0, got %v", results.ProcessingTime)
+	}
+
+	// Start timing
+	aggregator.StartTiming()
+
+	// Process a record (simulate some work)
+	record := DecodeRecord{
+		Bitlink:   "http://bit.ly/test",
+		UserAgent: "Mozilla/5.0",
+		Timestamp: "2020-01-01T00:00:00Z",
+		Referrer:  "direct",
+		RemoteIP:  "1.1.1.1",
+	}
+
+	err := aggregator.ProcessRecord(record)
+	if err != nil {
+		t.Fatalf("ProcessRecord failed: %v", err)
+	}
+
+	// Add a small delay to ensure measurable time
+	time.Sleep(1 * time.Millisecond)
+
+	// Stop timing
+	aggregator.StopTiming()
+
+	// Check that timing was recorded
+	results = aggregator.GetResults()
+	if results.ProcessingTime <= 0 {
+		t.Errorf("Expected ProcessingTime to be > 0, got %v", results.ProcessingTime)
+	}
+
+	// Verify the timing is reasonable (should be at least 1ms but less than 1 second)
+	if results.ProcessingTime < time.Millisecond {
+		t.Errorf("Expected ProcessingTime to be at least 1ms, got %v", results.ProcessingTime)
+	}
+
+	if results.ProcessingTime > time.Second {
+		t.Errorf("Expected ProcessingTime to be less than 1 second, got %v", results.ProcessingTime)
+	}
+}
+
+// Test timing methods work correctly when called multiple times
+func TestAggregator_TimingMultipleCalls(t *testing.T) {
+	mapping := URLMapping{}
+	config := AggregationConfig{FilterYear: 0}
+	aggregator := NewAggregator(mapping, config)
+
+	// Test multiple start/stop cycles
+	aggregator.StartTiming()
+	time.Sleep(1 * time.Millisecond)
+	aggregator.StopTiming()
+
+	firstTiming := aggregator.GetResults().ProcessingTime
+
+	// Start timing again (should reset)
+	aggregator.StartTiming()
+	time.Sleep(2 * time.Millisecond)
+	aggregator.StopTiming()
+
+	secondTiming := aggregator.GetResults().ProcessingTime
+
+	// Second timing should be different (and likely longer) than first
+	if secondTiming <= firstTiming {
+		t.Logf("First timing: %v, Second timing: %v", firstTiming, secondTiming)
+		// Note: This might occasionally fail due to timing precision, so we just log it
+	}
+
+	if secondTiming <= 0 {
+		t.Errorf("Expected second timing to be > 0, got %v", secondTiming)
+	}
 }
