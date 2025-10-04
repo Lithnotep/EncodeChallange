@@ -1,0 +1,1 @@
+First I had copilot make me a very simple GO skeleton for json/csv reading, with testing prepared to get started right away. as well as make sure project can be run when pulled down easily. Added the decode.json and encodes.csv as well.
